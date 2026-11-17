@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">充电哨兵</string>
+
+    <!-- Notification -->
+    <string name="channel_name">充电上限</string>
+    <string name="channel_description">电量到达上限时停止充电，回落到下限时恢复。</string>
+    <string name="notification_title_suspended">充电已暂停 · %1$d%%</string>
+    <string name="notification_title_charging">正在充电 · %1$d%%</string>
+    <string name="notification_title_unplugged">未插电 · %1$d%%</string>
+    <string name="notification_text">上限 %1$d%% 停止 / %2$d%% 恢复</string>
+    <string name="notification_action_disable">关闭限制</string>
+
+    <!-- Gauge and status -->
+    <string name="state_paused">充电已暂停</string>
+    <string name="state_charging">正在充电</string>
+    <string name="state_unplugged">未插电</string>
+    <string name="gauge_limit">上限 %1$d%%</string>
+    <string name="battery_summary">电池 %1$d%% · 上限 %2$d%% / 下限 %3$d%%</string>
+    <string name="percent">%1$d%%</string>
+
+    <!-- Limit card -->
+    <string name="limit_title">充电上限</string>
+    <string name="limit_hint">到达上限即切断输入电源，回落到下限后再恢复充电。</string>
+    <string name="stop_label">停止充电</string>
+    <string name="resume_label">恢复充电</string>
+
+    <!-- Debug card -->
+    <string name="debug_title">模拟电量（调试）</string>
+    <string name="debug_slider_label">使用模拟电量</string>
+    <string name="debug_hint">仅用于验证 80/50 切换逻辑：策略读取模拟电量，真实电量不受影响。</string>
+    <string name="debug_tip">真机验证提示：把上限调到当前电量以下，可立即触发停止充电。</string>
+
+    <!-- Log and footer -->
+    <string name="log_title">事件日志</string>
+    <string name="log_empty">暂无事件</string>
+    <string name="footer_node">sysfs 控制 · 需要 root</string>
+
+    <!-- Root chip -->
+    <string name="root_checking">检测 ROOT…</string>
+    <string name="root_granted">ROOT 已授权</string>
+    <string name="root_missing">无 ROOT</string>
+
+    <!-- Event log messages -->
+    <string name="log_root_ok">ROOT 检测通过</string>
+    <string name="log_root_failed">ROOT 检测失败（%1$s）</string>
+    <string name="log_suspended">电量 %1$d%% ≥ %2$d%%，已停止充电</string>
+    <string name="log_resumed">电量 %1$d%% ≤ %2$d%%，已恢复充电</string>
+    <string name="log_apply_failed">充电控制未到达目标状态（%1$s）</string>
+    <string name="log_restore_ok">已恢复充电</string>
+    <string name="log_restore_failed">恢复充电失败（%1$s）</string>
+    <string name="log_level_unavailable">读取电量失败，跳过本轮</string>
+    <string name="log_node_unavailable">充电控制节点不可读</string>
+    <string name="log_tick_failed">策略执行异常：%1$s</string>
+    <string name="log_boot_started">开机自启：已拉起充电监控服务</string>
+    <string name="log_boot_failed">开机自启失败（%1$s）</string>
+    <string name="log_disabled_from_notification">用户从通知关闭限制</string>
+    <string name="log_service_start_failed">启动监控服务失败（%1$s）</string>
+</resources>

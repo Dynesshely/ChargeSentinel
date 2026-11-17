@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.application")
+    alias(libs.plugins.android.application)
 }
 
 android {
@@ -11,7 +11,7 @@ android {
         minSdk = 30
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
     }
 
     buildTypes {
@@ -25,4 +25,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+}
+
+dependencies {
+    testImplementation(libs.junit)
 }

@@ -1,5 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">充电哨兵</string>
-    <string name="channel_name">充电上限</string>
+    <string name="app_name">ChargeSentinel</string>
+
+    <!-- Notification -->
+    <string name="channel_name">Charge limit</string>
+    <string name="channel_description">Stops charging at the upper threshold and resumes at the lower one.</string>
+    <string name="notification_title_suspended">Charging paused · %1$d%%</string>
+    <string name="notification_title_charging">Charging · %1$d%%</string>
+    <string name="notification_title_unplugged">Not plugged in · %1$d%%</string>
+    <string name="notification_text">Stop at %1$d%% / resume at %2$d%%</string>
+    <string name="notification_action_disable">Turn off limit</string>
+
+    <!-- Gauge and status -->
+    <string name="state_paused">Charging paused</string>
+    <string name="state_charging">Charging</string>
+    <string name="state_unplugged">Not plugged in</string>
+    <string name="gauge_limit">limit %1$d%%</string>
+    <string name="battery_summary">Battery %1$d%% · stop %2$d%% / resume %3$d%%</string>
+    <string name="percent">%1$d%%</string>
+
+    <!-- Limit card -->
+    <string name="limit_title">Charge limit</string>
+    <string name="limit_hint">Cut power at the upper threshold, resume charging at the lower one.</string>
+    <string name="stop_label">Stop charging</string>
+    <string name="resume_label">Resume charging</string>
+
+    <!-- Debug card -->
+    <string name="debug_title">Simulated level (debug)</string>
+    <string name="debug_slider_label">Simulated level</string>
+    <string name="debug_hint">Feeds the policy a fake level so the 80/50 switch can be tested on a real device. The battery itself is untouched.</string>
+    <string name="debug_tip">Real-device tip: set the limit below the current level to trigger a stop immediately.</string>
+
+    <!-- Log and footer -->
+    <string name="log_title">Event log</string>
+    <string name="log_empty">No events yet</string>
+    <string name="footer_node">sysfs control · root required</string>
+
+    <!-- Root chip -->
+    <string name="root_checking">Checking root…</string>
+    <string name="root_granted">ROOT granted</string>
+    <string name="root_missing">No root</string>
+
+    <!-- Event log messages -->
+    <string name="log_root_ok">Root access granted</string>
+    <string name="log_root_failed">Root check failed (%1$s)</string>
+    <string name="log_suspended">%1$d%% ≥ %2$d%% — charging suspended</string>
+    <string name="log_resumed">%1$d%% ≤ %2$d%% — charging resumed</string>
+    <string name="log_apply_failed">Charge control did not reach the requested state (%1$s)</string>
+    <string name="log_restore_ok">Charging restored</string>
+    <string name="log_restore_failed">Could not restore charging (%1$s)</string>
+    <string name="log_level_unavailable">Battery level unavailable, skipping this tick</string>
+    <string name="log_node_unavailable">Charge control nodes are not readable</string>
+    <string name="log_tick_failed">Policy tick failed: %1$s</string>
+    <string name="log_boot_started">Boot: monitoring service started</string>
+    <string name="log_boot_failed">Boot: could not start the service (%1$s)</string>
+    <string name="log_disabled_from_notification">Limit turned off from the notification</string>
+    <string name="log_service_start_failed">Could not start the monitoring service (%1$s)</string>
 </resources>
