@@ -1,96 +1,198 @@
-# ChargeSentinel · 充电哨兵
+<p align="center">
+  <img src="docs/banner.png" alt="ChargeSentinel — stop charging at 80%, resume at 50%" width="100%">
+</p>
 
-一个只做一件事的 Android 小工具：**把充电上限卡在某个电量，回落之后再自动恢复充电**。
+<p align="center">
+  <img src="https://img.shields.io/badge/Android-10%2B-3DDC97?logo=android&logoColor=white&style=flat-square" alt="Android 10+">
+  <img src="https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white&style=flat-square" alt="Java 17">
+  <img src="https://img.shields.io/badge/version-1.0.0-3DDC97?style=flat-square" alt="version 1.0.0">
+  <img src="https://img.shields.io/badge/License-MIT-3DDC97?style=flat-square" alt="MIT license">
+  <img src="https://img.shields.io/github/stars/Dynesshely/ChargeSentinel?style=flat-square&color=3DDC97" alt="GitHub stars">
+  <img src="https://img.shields.io/github/issues/Dynesshely/ChargeSentinel?style=flat-square" alt="GitHub issues">
+  <img src="https://img.shields.io/badge/PRs-welcome-3DDC97?style=flat-square" alt="PRs welcome">
+</p>
 
-默认策略：充到 **80%** 停止充电，掉到 **50%** 再重新充——典型的电池保养用法（长期插电、或夜里充电时减少满电静置时间）。
+# ChargeSentinel
 
-> 项目代号：**ChargeSentinel**（充电哨兵）
-> 包名：`top.dynesshely.chargesentinel`
+**Stop charging at 80%. Resume at 50%.** A tiny, dependency-free Android app that keeps your battery inside a healthy
+window — and keeps it there even when the charger driver tries to take the decision back.
 
-## 功能
+<p align="center">
+  <img src="docs/screenshot.png" alt="ChargeSentinel on a OnePlus 7 Pro running Android 14" width="330">
+</p>
 
-- 迟滞控制：电量 ≥ 上限 → 切断充电；电量 ≤ 下限 → 恢复充电；中间区间保持原状态，不会来回抖动。
-- 阈值可调：停止充电 50–100%，恢复充电 20–95%（两者至少间隔 5 个百分点）。
-- 前台服务常驻：每 10 秒采样一次，通知栏显示当前电量与状态，可直接从通知关闭限制。
-- 开机自启：打开限制后重启设备，服务自动恢复并重新评估电量。
-- 关闭限制 / 卸载服务时自动把充电恢复为允许状态，不会把机器留在“永远不充电”。
-- 调试用「模拟电量」开关：不改真实电量，直接喂给策略一个假电量，便于在真机上验证 80/50 切换。
-- 事件日志：最近 80 条动作记录，同时写入 logcat（tag `ChargeSentinel`）。
+## Introduction
 
-## 工作原理
+Lithium-ion batteries age fastest when they sit at 100% while plugged in. Many ROMs ship a charge limit, but it is
+either missing, buried in vendor code, or silently ignored by the charger driver. ChargeSentinel does one thing and
+does it in the most direct way available on Android: with **root**, it flips the kernel's charging switches, and it
+keeps flipping them as long as the limit is enabled.
 
-Android 没有公开 API 能停止充电，本应用通过 **root** 写 sysfs 节点：
+- **Hysteresis instead of a single cutoff.** Charging stops at the upper threshold (default **80%**) and does not
+  restart until the battery falls to the lower one (default **50%**). No flip-flopping around a single number.
+- **Self-healing control.** The service re-reads the real sysfs nodes every 10 seconds and rewrites them whenever the
+  charger driver resets them. One-shot writes are not enough on several Qualcomm/OnePlus kernels.
+- **Explicit state, not hope.** Suspending requires *both* control nodes to be in the "stop" position; a mismatch is
+  treated as a failure and corrected on the next tick.
+- **Foreground service + notification.** Current level, current state, and a one-tap "turn off limit" action.
+- **Survives reboots.** If the limit is on, the service comes back after boot and re-evaluates the battery.
+- **Debug simulation.** Feed the policy a fake level from the UI to test the 80/50 transitions on a real device
+  without waiting for hours of discharge.
+- **Zero third-party dependencies.** Plain Java 17, framework widgets, no AppCompat, no Compose, no Material — the
+  debug APK is under 100 KB.
 
-| 节点 | 写入 | 含义 |
+Requires **root** (Magisk, KernelSU, …). Without root the app still runs but can only display the battery level.
+
+## How to install
+
+### Requirements
+
+| Item | Requirement |
+| --- | --- |
+| Android | 10 or newer (minSdk 30), tested on Android 14 |
+| Root | Magisk / KernelSU / any `su` that can write `/sys/class/power_supply` |
+| Build | JDK 17 and Android SDK Platform 34 (only if building from source) |
+
+### Build from source
+
+```bash
+git clone https://github.com/Dynesshely/ChargeSentinel.git
+cd ChargeSentinel
+
+# point Gradle at your SDK
+echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+./gradlew assembleDebug
+# APK: app/build/outputs/apk/debug/app-debug.apk
+```
+
+On Windows use `gradlew.bat`; set `JAVA_HOME` to a JDK 17 installation first.
+
+### Install on the phone
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Then:
+
+1. Open **ChargeSentinel** and allow notifications when asked (Android 13+). Without the notification the foreground
+   service still works, you just cannot see its status.
+2. Flip **Charge limit** on. Magisk asks for superuser permission the first time — grant it permanently.
+3. Set **Stop charging** / **Resume charging** to the window you want. Defaults are 80% / 50%; the resume value is
+   always kept at least 5 points below the stop value.
+
+There is no prebuilt release APK yet — build from source for now.
+
+## How it works
+
+Android has no public API to stop charging, so ChargeSentinel writes the kernel's `power_supply` attributes through
+`su`.
+
+| Node | Write | Meaning |
 | --- | --- | --- |
-| `/sys/class/power_supply/battery/mmi_charging_enable` | `0` / `1` | 关断 / 允许充电（主控制，写入后能保持） |
-| `/sys/class/power_supply/battery/input_suspend` | `1` / `0` | 切断 / 恢复输入电源（立即生效，但会被驱动周期性重置） |
+| `/sys/class/power_supply/battery/mmi_charging_enable` | `0` / `1` | Disable / allow charging (primary switch, survives on tested devices) |
+| `/sys/class/power_supply/battery/input_suspend` | `1` / `0` | Cut / restore input power (immediate, but reset periodically by the charger driver) |
 
-实测无效或不可用：
+Nodes that turned out to be useless on the tested device:
 
-- `charge_control_limit`：本机内核上只读（`-r--r--r--`），写不进去。
-- `/sys/class/qcom-battery/restrict_chg`：能写、能保持，但实测对充电电压/电流没有影响。
+- `charge_control_limit` — read-only on this kernel (`-r--r--r--`).
+- `/sys/class/qcom-battery/restrict_chg` — writable and sticky, but it does not change the charge voltage/current.
 
-**关于“留不住”**：本机（OnePlus 7 Pro，SM8150）的充电器驱动会周期性把 `input_suspend` 重置回 0（满电状态下大约每 10 秒一次），所以“只写一次”的做法会失效。服务因此改为每 10 秒回读一次实际节点值：只要期望状态是“停充”而节点被改回“允许”，就立即重写并记一条日志。这样即使驱动重置也能自愈，代价是持续轮询 `su`。
+### The hysteresis loop
 
-停充要求两个节点**同时**处于停充位（`mmi=0` 且 `in=1`）；只要其中任意一个被驱动改回，服务就判定为“矛盾状态”并重新写入两个节点。避免只写一个节点导致“看起来停了、实际还在充”。
-
-判断停充是否生效不看节点，看电压：正常充电时电池 `voltage_now` 在 4.39 V 左右，切断输入后回落到 4.08–4.27 V 的静置电压。
-
-## 环境要求
-
-- Android 10+（minSdk 30，targetSdk 34，已在 Android 14 上验证）。
-- **必须 root**（Magisk 等），并给本应用授予超级用户权限；没有 root 时界面会显示「无 ROOT」，只能看电量、无法控制。
-- 前台服务类型为 `specialUse`，Android 13+ 需允许通知，否则通知栏看不到状态（不影响控制）。
-
-## 构建
-
-```powershell
-$env:JAVA_HOME = 'C:\path\to\jdk-17'
-$env:ANDROID_HOME = 'C:\path\to\Android\Sdk'
-.\gradlew.bat assembleDebug
-# 产物：app\build\outputs\apk\debug\app-debug.apk
+```text
+        stop threshold (80%)
+   ────────────┬────────────   level >= stop   -> suspend charging
+               │
+               │  hold the current state
+               │
+   ────────────┴────────────   level <= resume -> allow charging
+        resume threshold (50%)
 ```
 
-项目零第三方依赖（纯 framework + Java），只需要 AGP 8.5.2 与 JDK 17。
+Every 10 seconds the foreground service:
 
-## 安装
+1. reads the battery level (or the simulated level, in debug mode),
+2. asks `ChargePolicy` for a decision (`SUSPEND` / `RESUME` / `HOLD`),
+3. calls `ChargeControl.apply(wantSuspended)`, which reads the two nodes, writes only what is out of place, and
+   returns the resulting state,
+4. logs a transition only when the state actually changed.
 
-```powershell
-adb install -r app\build\outputs\apk\debug\app-debug.apk
+Because step 3 runs on every tick and is idempotent, a driver reset is repaired within one interval. That is the whole
+trick: **one `su` per tick, always re-asserting the desired state.**
+
+### Checking that it really stops
+
+Look at the battery voltage, not at the node:
+
+- charging: `voltage_now` ≈ 4.39 V (charger float voltage)
+- suspended: `voltage_now` relaxes to 4.08–4.27 V
+
+## How to contribute
+
+Issues and pull requests are welcome.
+
+- **Bug reports** — please include the Android version, device model, kernel/ROM, root solution, and the values of
+  `mmi_charging_enable` / `input_suspend` (if present). That is usually enough to tell whether the node set needs to
+  be extended.
+- **Porting to another device** — node paths live in `SysfsChargeControl`; a PR that turns them into a per-device table
+  would be very welcome.
+- **Code** — plain Java 17, no new dependencies. Keep the policy logic inside `ChargePolicy` (it is unit-tested and
+  must stay Android-free), keep UI text in `strings.xml`, and run the checks before opening a PR:
+
+  ```bash
+  ./gradlew testDebugUnitTest assembleDebug
+  ```
+
+- **Commit style** — short imperative subject lines, Chinese or English both fine.
+- Please do not commit personal data: real device IPs, adb ports, logs from your own phone, or anything from the
+  workspace-level `.meta` folder.
+
+## Structure
+
+```text
+ChargeSentinel/
+├── app/
+│   ├── build.gradle.kts
+│   └── src/
+│       ├── main/
+│       │   ├── AndroidManifest.xml
+│       │   ├── java/top/dynesshely/chargesentinel/
+│       │   │   ├── core/          # pure logic + sysfs control
+│       │   │   │   ├── ChargePolicy.java       # hysteresis and clamp rules (unit-tested)
+│       │   │   │   ├── ChargeState.java        # ALLOWED / SUSPENDED / MIXED / UNKNOWN
+│       │   │   │   ├── ChargeControl.java      # control abstraction
+│       │   │   │   ├── SysfsChargeControl.java # root + sysfs, one su per call
+│       │   │   │   └── BatteryInfo.java        # battery level / plugged state
+│       │   │   ├── data/          # persistence
+│       │   │   │   ├── Settings.java
+│       │   │   │   └── EventLog.java
+│       │   │   ├── service/       # foreground service + boot receiver
+│       │   │   │   ├── ChargeService.java
+│       │   │   │   └── BootReceiver.java
+│       │   │   └── ui/            # activity, gauge, view helpers
+│       │   │       ├── MainActivity.java
+│       │   │       ├── BatteryGaugeView.java
+│       │   │       └── UiKit.java
+│       │   └── res/               # strings (en / zh-CN), theme, icons
+│       └── test/java/.../core/ChargePolicyTest.java
+├── docs/                          # banner + screenshot used by this README
+├── gradle/libs.versions.toml
+├── LICENSE
+└── README.md
 ```
 
-首次打开会申请通知权限；首次执行控制时 Magisk 会弹超级用户授权，选择「允许」并记住。
+## Stars History
 
-## 真机验证（OnePlus 7 Pro / GM1911 / Android 14 / Magisk 28.1）
+Dark mode is what this README uses; the light variant is kept for light-mode viewers.
 
-1. 打开「充电上限」，电量 100%（≥ 80%）→ `mmi_charging_enable=0`、`input_suspend=1`，界面「充电已暂停」，
-   日志 `电量 100% ≥ 80%，已停止充电`；电压从 4.389 V 落到 4.08–4.13 V。
-2. 手工把两个节点改回“允许充电”模拟驱动重置 → 14 秒内服务自动重写并再记一条停止日志（自愈验证通过）。
-3. 用「模拟电量」把电量调到 40%（≤ 50%）→ 节点回到 `mmi=1 / in=0`，界面「正在充电」，
-   日志 `电量 40% ≤ 50%，已恢复充电`，充电电流恢复（`current_now` 约 -230）。
-4. 模拟电量 85%（越过上限）→ 再次停充，日志 `电量 85% ≥ 80%，已停止充电`。
-5. 关闭模拟电量后按真实电量运行，界面状态与节点值一致。
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Dynesshely/ChargeSentinel&type=Date&theme=dark">
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Dynesshely/ChargeSentinel&type=Date">
+  <img alt="Star history of ChargeSentinel" src="https://api.star-history.com/svg?repos=Dynesshely/ChargeSentinel&type=Date&theme=dark">
+</picture>
 
-界面截图与测试记录见工作区 `.meta/dynesshely/chargesentinel/`（不随仓库提交）。
+## License
 
-## 已知限制
-
-- 没有 root 就完全无法控制充电，只能当电量显示用。
-- 不同厂商/内核的节点名不一样；换机型时若 `input_suspend` 不存在或被 SELinux 拒绝，需要改 `ChargeController` 里的节点路径。
-- 应用被杀掉且系统未重启时，若正处于“暂停充电”，充电会一直保持暂停；重新打开应用或重启后会按当前电量重新评估。
-- 部分系统在深度睡眠时会延迟定时器，电量跨越阈值的响应可能晚几十秒级别。
-
-## 目录结构
-
-```
-app/src/main/java/top/dynesshely/chargesentinel/
-  MainActivity.java      界面（程序化布局：弧形电量表 + 阈值 + 调试 + 日志）
-  BatteryGaugeView.java  自绘弧形电量表
-  ChargeService.java     前台服务，10 秒一次的策略循环
-  ChargeController.java  root + sysfs 读写与校验
-  Battery.java           系统电量/供电状态读取
-  BootReceiver.java      开机自启
-  Prefs.java             阈值与状态持久化
-  Logs.java              环形日志（同时输出 logcat）
-```
+[MIT](LICENSE) © 2026 Dynesshely
