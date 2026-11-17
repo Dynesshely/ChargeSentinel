@@ -76,6 +76,9 @@ public class MainActivity extends Activity {
         bindSettings();
         askNotificationPermission();
         checkRoot();
+        if (Prefs.enabled(this)) {
+            ensureService();
+        }
         refresh();
     }
 

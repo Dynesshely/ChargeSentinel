@@ -7,15 +7,18 @@ import java.util.concurrent.TimeUnit;
 /**
  * 通过 root 写入 sysfs 控制充电通断。
  *
- * OnePlus 7 Pro（SM8150，Android 14）上实测可用的节点：
- *   /sys/class/power_supply/battery/input_suspend       1=切断输入电源，0=恢复
- *   /sys/class/power_supply/battery/mmi_charging_enable 0=停充，1=允许充电（存在则一并写入）
- * 注意 charge_control_limit 在该内核上是只读的（-r--r--r--），不能作为控制手段。
+ * OnePlus 7 Pro（SM8150，Android 14 / LineageOS 21）实测：
+ *   /sys/class/power_supply/battery/mmi_charging_enable  0=停充，1=允许充电（主控制，写入后能保持）
+ *   /sys/class/power_supply/battery/input_suspend        1=切断输入电源，0=恢复（立即生效，但会被充电器
+ *                                                        驱动的 AICL 周期重置，需要周期性复核重写）
+ * 无效手段（实测）：
+ *   charge_control_limit —— 本内核只读（-r--r--r--）
+ *   /sys/class/qcom-battery/restrict_chg —— 写入后电压无变化，不影响充电
  */
 public final class ChargeController {
 
     public static final String NODE_SUSPEND = "/sys/class/power_supply/battery/input_suspend";
-    public static final String NODE_CHARGE_ENABLE = "/sys/class/power_supply/battery/mmi_charging_enable";
+    public static final String NODE_ENABLE = "/sys/class/power_supply/battery/mmi_charging_enable";
 
     public static final int STATE_UNKNOWN = -1;
     public static final int STATE_CHARGING_ALLOWED = 0;
@@ -40,34 +43,45 @@ public final class ChargeController {
         return new Result(root, r.output);
     }
 
-    /** 停止充电：切断输入电源。返回值带上写入后的实际节点值。 */
+    /** 停止充电：关充电使能 + 切断输入电源。 */
     public static Result suspend() {
-        return run("echo 1 > " + NODE_SUSPEND
-                + "; echo 0 > " + NODE_CHARGE_ENABLE + " 2>/dev/null"
-                + "; cat " + NODE_SUSPEND);
+        return run("echo 0 > " + NODE_ENABLE + " 2>/dev/null"
+                + "; echo 1 > " + NODE_SUSPEND
+                + "; " + readScript());
     }
 
     /** 恢复充电。 */
     public static Result resume() {
-        return run("echo 0 > " + NODE_SUSPEND
-                + "; echo 1 > " + NODE_CHARGE_ENABLE + " 2>/dev/null"
-                + "; cat " + NODE_SUSPEND);
+        return run("echo 1 > " + NODE_ENABLE + " 2>/dev/null"
+                + "; echo 0 > " + NODE_SUSPEND
+                + "; " + readScript());
     }
 
-    /** 读取当前是否处于“被本应用切断”的状态。 */
+    /** 读取当前实际状态：两个节点任一处于“停充”即视为停充。 */
     public static int state() {
-        Result r = run("cat " + NODE_SUSPEND + " 2>/dev/null");
+        Result r = run(readScript());
         if (!r.ok) {
             return STATE_UNKNOWN;
         }
-        String v = r.output.trim();
-        if (v.startsWith("1")) {
+        String[] parts = r.output.trim().split("\\s+");
+        if (parts.length < 2) {
+            return STATE_UNKNOWN;
+        }
+        String enable = parts[0];
+        String suspend = parts[1];
+        if ("0".equals(enable) || "1".equals(suspend)) {
             return STATE_SUSPENDED;
         }
-        if (v.startsWith("0")) {
+        if ("1".equals(enable) && "0".equals(suspend)) {
             return STATE_CHARGING_ALLOWED;
         }
         return STATE_UNKNOWN;
+    }
+
+    /** 一次 su 同时读两个节点，输出 "enable suspend"。 */
+    private static String readScript() {
+        return "e=$(cat " + NODE_ENABLE + " 2>/dev/null || echo x); s=$(cat " + NODE_SUSPEND
+                + " 2>/dev/null || echo x); echo \"$e $s\"";
     }
 
     private static Result run(String cmd) {

@@ -21,6 +21,9 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 前台服务：每 10 秒读一次电量，按迟滞规则（>=stop 停止充电，<=resume 恢复充电）操作 sysfs。
+ *
+ * 每次 tick 都回读实际节点值，而不是只信 SharedPreferences：本机充电器驱动会周期性把
+ * input_suspend 重置为 0（满电时大约十秒一次），只写一次是留不住“停止充电”的。
  */
 public class ChargeService extends Service {
 
@@ -38,6 +41,7 @@ public class ChargeService extends Service {
     private ScheduledExecutorService exec;
     private final Handler main = new Handler(Looper.getMainLooper());
     private NotificationManager nm;
+    private String lastError = "";
 
     public static void addListener(Runnable r) {
         LISTENERS.add(r);
@@ -77,6 +81,7 @@ public class ChargeService extends Service {
             return START_NOT_STICKY;
         }
         if (!Prefs.enabled(this)) {
+            restoreCharging();
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -104,58 +109,88 @@ public class ChargeService extends Service {
     }
 
     private void restoreCharging() {
-        if (Prefs.suspended(this)) {
+        int actual = ChargeController.state();
+        if (actual != ChargeController.STATE_CHARGING_ALLOWED) {
             ChargeController.Result r = ChargeController.resume();
             Prefs.setSuspended(this, false);
-            Logs.add(r.ok ? "已恢复充电（关闭限制）" : "恢复充电失败: " + r.output);
+            Logs.add(r.ok ? "已恢复充电" : "恢复充电失败: " + r.output);
+        } else {
+            Prefs.setSuspended(this, false);
         }
         notifyListeners();
+    }
+
+    private void reportError(String msg) {
+        if (!msg.equals(lastError)) {
+            lastError = msg;
+            Logs.add(msg);
+        }
     }
 
     private void safeTick() {
         try {
             tick();
         } catch (Throwable t) {
-            Logs.add("策略执行异常: " + t);
+            reportError("策略执行异常: " + t);
         }
     }
 
     private void tick() {
-        if (!Prefs.enabled(this)) {
+        boolean enabled = Prefs.enabled(this);
+        if (!enabled) {
+            if (ChargeController.state() != ChargeController.STATE_CHARGING_ALLOWED) {
+                ChargeController.resume();
+                Prefs.setSuspended(this, false);
+                Logs.add("限制已关闭，恢复充电");
+            }
             return;
         }
+
         int level = Battery.level(this);
         if (Prefs.simEnabled(this)) {
             level = Prefs.simLevel(this);
         }
-        boolean plugged = Battery.plugged(this);
-        int stop = Prefs.stop(this);
-        int resume = Prefs.resume(this);
-        boolean suspended = Prefs.suspended(this);
-
         if (level < 0) {
-            Logs.add("读取电量失败，跳过本轮");
+            reportError("读取电量失败，跳过本轮");
             return;
         }
 
-        if (!suspended && level >= stop) {
-            ChargeController.Result r = ChargeController.suspend();
-            int state = ChargeController.state();
-            if (r.ok && state == ChargeController.STATE_SUSPENDED) {
-                Prefs.setSuspended(this, true);
-                Logs.add("电量 " + level + "% ≥ " + stop + "%，已停止充电");
+        boolean plugged = Battery.plugged(this);
+        int stop = Prefs.stop(this);
+        int resume = Prefs.resume(this);
+        boolean wantSuspended = Prefs.suspended(this);
+
+        if (level >= stop) {
+            wantSuspended = true;
+        } else if (level <= resume) {
+            wantSuspended = false;
+        }
+
+        int actual = ChargeController.state();
+        if (actual == ChargeController.STATE_UNKNOWN) {
+            reportError("读取充电控制节点失败");
+            return;
+        }
+        boolean isSuspended = actual == ChargeController.STATE_SUSPENDED;
+
+        if (isSuspended != wantSuspended) {
+            ChargeController.Result r = wantSuspended ? ChargeController.suspend() : ChargeController.resume();
+            int now = ChargeController.state();
+            boolean ok = now == (wantSuspended
+                    ? ChargeController.STATE_SUSPENDED : ChargeController.STATE_CHARGING_ALLOWED);
+            if (ok) {
+                Prefs.setSuspended(this, wantSuspended);
+                lastError = "";
+                if (wantSuspended) {
+                    Logs.add("电量 " + level + "% ≥ " + stop + "%，已停止充电");
+                } else {
+                    Logs.add("电量 " + level + "% ≤ " + resume + "%，已恢复充电");
+                }
             } else {
-                Logs.add("停止充电失败: " + r.output);
+                reportError((wantSuspended ? "停止" : "恢复") + "充电失败: " + r.output);
             }
-        } else if (suspended && level <= resume) {
-            ChargeController.Result r = ChargeController.resume();
-            int state = ChargeController.state();
-            if (r.ok && state == ChargeController.STATE_CHARGING_ALLOWED) {
-                Prefs.setSuspended(this, false);
-                Logs.add("电量 " + level + "% ≤ " + resume + "%，已恢复充电");
-            } else {
-                Logs.add("恢复充电失败: " + r.output);
-            }
+        } else if (Prefs.suspended(this) != isSuspended) {
+            Prefs.setSuspended(this, isSuspended);
         }
 
         updateNotification(level, plugged);
