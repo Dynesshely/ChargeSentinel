@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="ChargeSentinel — stop charging at 80%, resume at 50%" width="100%">
+  <img src="docs/banner.svg" alt="ChargeSentinel — stop charging at 80%, resume at 50%" width="100%" style="border-radius:22px">
 </p>
 
 <p align="center">
