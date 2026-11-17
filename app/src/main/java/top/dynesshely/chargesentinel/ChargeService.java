@@ -173,18 +173,21 @@ public class ChargeService extends Service {
         }
         boolean isSuspended = actual == ChargeController.STATE_SUSPENDED;
 
-        if (isSuspended != wantSuspended) {
+        if (actual == ChargeController.STATE_MIXED || isSuspended != wantSuspended) {
             ChargeController.Result r = wantSuspended ? ChargeController.suspend() : ChargeController.resume();
             int now = ChargeController.state();
             boolean ok = now == (wantSuspended
                     ? ChargeController.STATE_SUSPENDED : ChargeController.STATE_CHARGING_ALLOWED);
             if (ok) {
+                boolean changed = Prefs.suspended(this) != wantSuspended;
                 Prefs.setSuspended(this, wantSuspended);
                 lastError = "";
-                if (wantSuspended) {
-                    Logs.add("电量 " + level + "% ≥ " + stop + "%，已停止充电");
-                } else {
-                    Logs.add("电量 " + level + "% ≤ " + resume + "%，已恢复充电");
+                if (changed) {
+                    if (wantSuspended) {
+                        Logs.add("电量 " + level + "% ≥ " + stop + "%，已停止充电");
+                    } else {
+                        Logs.add("电量 " + level + "% ≤ " + resume + "%，已恢复充电");
+                    }
                 }
             } else {
                 reportError((wantSuspended ? "停止" : "恢复") + "充电失败: " + r.output);

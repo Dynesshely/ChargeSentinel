@@ -23,6 +23,8 @@ public final class ChargeController {
     public static final int STATE_UNKNOWN = -1;
     public static final int STATE_CHARGING_ALLOWED = 0;
     public static final int STATE_SUSPENDED = 1;
+    /** 两个节点状态互相矛盾（例如驱动只重置了其中一个），需要重新写入。 */
+    public static final int STATE_MIXED = 2;
 
     public static final class Result {
         public final boolean ok;
@@ -69,11 +71,18 @@ public final class ChargeController {
         }
         String enable = parts[0];
         String suspend = parts[1];
-        if ("0".equals(enable) || "1".equals(suspend)) {
+        boolean e0 = "0".equals(enable);
+        boolean e1 = "1".equals(enable);
+        boolean s0 = "0".equals(suspend);
+        boolean s1 = "1".equals(suspend);
+        if (e0 && s1) {
             return STATE_SUSPENDED;
         }
-        if ("1".equals(enable) && "0".equals(suspend)) {
+        if (e1 && s0) {
             return STATE_CHARGING_ALLOWED;
+        }
+        if (e0 || e1 || s0 || s1) {
+            return STATE_MIXED;
         }
         return STATE_UNKNOWN;
     }
