@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.png" alt="ChargeSentinel — stop charging at 80%, resume at 50%" width="100%">
+  <img src="docs/banner.svg" alt="ChargeSentinel — stop charging at 80%, resume at 50%" width="100%">
 </p>
 
 <p align="center">
@@ -177,7 +177,7 @@ ChargeSentinel/
 │       │   │       └── UiKit.java
 │       │   └── res/               # strings (en / zh-CN), theme, icons
 │       └── test/java/.../core/ChargePolicyTest.java
-├── docs/                          # banner + screenshot used by this README
+├── docs/                          # animated SVG banner + screenshot used by this README
 ├── gradle/libs.versions.toml
 ├── LICENSE
 └── README.md
