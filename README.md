@@ -5,7 +5,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Android-10%2B-3DDC97?logo=android&logoColor=white&style=flat-square" alt="Android 10+">
   <img src="https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white&style=flat-square" alt="Java 17">
-  <img src="https://img.shields.io/badge/version-1.0.0-3DDC97?style=flat-square" alt="version 1.0.0">
+  <img src="https://img.shields.io/badge/version-0.1.0-3DDC97?style=flat-square" alt="version 0.1.0">
+  <a href="https://github.com/Dynesshely/ChargeSentinel/actions/workflows/ci.yml"><img src="https://github.com/Dynesshely/ChargeSentinel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/License-MIT-3DDC97?style=flat-square" alt="MIT license">
   <img src="https://img.shields.io/github/stars/Dynesshely/ChargeSentinel?style=flat-square&color=3DDC97" alt="GitHub stars">
   <img src="https://img.shields.io/github/issues/Dynesshely/ChargeSentinel?style=flat-square" alt="GitHub issues">
@@ -70,6 +71,9 @@ On Windows use `gradlew.bat`; set `JAVA_HOME` to a JDK 17 installation first.
 
 ### Install on the phone
 
+Grab the APK from the [Releases](https://github.com/Dynesshely/ChargeSentinel/releases) page, or install the one you
+just built:
+
 ```bash
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -82,7 +86,8 @@ Then:
 3. Set **Stop charging** / **Resume charging** to the window you want. Defaults are 80% / 50%; the resume value is
    always kept at least 5 points below the stop value.
 
-There is no prebuilt release APK yet — build from source for now.
+Every `v*` tag is built and published automatically by GitHub Actions. Release APKs are signed with the standard
+Android debug key, so they are meant for sideloading rather than store distribution.
 
 ## How it works
 
@@ -153,6 +158,7 @@ Issues and pull requests are welcome.
 
 ```text
 ChargeSentinel/
+├── .github/workflows/             # CI (build + unit tests) and tag-triggered release
 ├── app/
 │   ├── build.gradle.kts
 │   └── src/
