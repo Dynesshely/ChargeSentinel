@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Android-10%2B-3DDC97?logo=android&logoColor=white&style=flat-square" alt="Android 10+">
   <img src="https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white&style=flat-square" alt="Java 17">
-  <img src="https://img.shields.io/badge/version-0.2.0-3DDC97?style=flat-square" alt="version 0.2.0">
+  <img src="https://img.shields.io/badge/version-0.2.1-3DDC97?style=flat-square" alt="version 0.2.1">
   <a href="https://github.com/Dynesshely/ChargeSentinel/actions/workflows/ci.yml"><img src="https://github.com/Dynesshely/ChargeSentinel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/License-MIT-3DDC97?style=flat-square" alt="MIT license">
   <img src="https://img.shields.io/github/stars/Dynesshely/ChargeSentinel?style=flat-square&color=3DDC97" alt="GitHub stars">
@@ -91,8 +91,9 @@ Then:
 3. Set **Stop charging** / **Resume charging** to the window you want. Defaults are 80% / 50%; the resume value is
    always kept at least 5 points below the stop value.
 
-Every `v*` tag is built and published automatically by GitHub Actions. Release APKs are signed with the standard
-Android debug key, so they are meant for sideloading rather than store distribution.
+Every `v*` tag is built and published automatically by GitHub Actions. APKs are signed with the project's private
+release key (RSA 4096); the keystore never enters the repository — CI restores it from an encrypted secret. Builds
+from **v0.2.1** onwards can update in place; older debug-signed builds need one uninstall.
 
 ## How it works
 
