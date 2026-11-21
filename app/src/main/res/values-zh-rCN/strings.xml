@@ -41,6 +41,20 @@
     <string name="root_granted">ROOT 已授权</string>
     <string name="root_missing">无 ROOT</string>
 
+    <!-- History -->
+    <string name="history_title">电量历史</string>
+    <string name="history_range_24h">24 小时</string>
+    <string name="history_range_7d">7 天</string>
+    <string name="history_empty">暂无采样数据</string>
+    <string name="history_stats">最高 %1$d%% · 最低 %2$d%% · 平均 %3$d%% · 停止 %4$d 次 · 恢复 %5$d 次</string>
+
+    <!-- Background -->
+    <string name="background_title">后台运行</string>
+    <string name="background_hint">服务是粘性的、开机自动恢复，并有 15 分钟一次的 JobScheduler 兜底；把应用加入电池优化白名单可以显著降低被系统杀掉的概率。</string>
+    <string name="background_exempt">电池优化：已豁免</string>
+    <string name="background_restricted">电池优化：未豁免</string>
+    <string name="background_action">允许后台运行</string>
+
     <!-- Event log messages -->
     <string name="log_root_ok">ROOT 检测通过</string>
     <string name="log_root_failed">ROOT 检测失败（%1$s）</string>

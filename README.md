@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Android-10%2B-3DDC97?logo=android&logoColor=white&style=flat-square" alt="Android 10+">
   <img src="https://img.shields.io/badge/Java-17-ED8B00?logo=openjdk&logoColor=white&style=flat-square" alt="Java 17">
-  <img src="https://img.shields.io/badge/version-0.1.0-3DDC97?style=flat-square" alt="version 0.1.0">
+  <img src="https://img.shields.io/badge/version-0.2.0-3DDC97?style=flat-square" alt="version 0.2.0">
   <a href="https://github.com/Dynesshely/ChargeSentinel/actions/workflows/ci.yml"><img src="https://github.com/Dynesshely/ChargeSentinel/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/License-MIT-3DDC97?style=flat-square" alt="MIT license">
   <img src="https://img.shields.io/github/stars/Dynesshely/ChargeSentinel?style=flat-square&color=3DDC97" alt="GitHub stars">
@@ -20,6 +20,7 @@ window — and keeps it there even when the charger driver tries to take the dec
 
 <p align="center">
   <img src="docs/screenshot.png" alt="ChargeSentinel on a OnePlus 7 Pro running Android 14" width="330">
+  <img src="docs/history.png" alt="Battery history chart and background reliability card" width="330">
 </p>
 
 ## Introduction
@@ -39,6 +40,10 @@ keeps flipping them as long as the limit is enabled.
 - **Survives reboots.** If the limit is on, the service comes back after boot and re-evaluates the battery.
 - **Debug simulation.** Feed the policy a fake level from the UI to test the 80/50 transitions on a real device
   without waiting for hours of discharge.
+- **History you can read.** The service samples the battery every few minutes and records every stop/resume
+  transition, so the last 24 hours or 7 days can be drawn as a curve with threshold lines and event markers.
+- **Background that survives.** Sticky foreground service, boot receiver, a 15-minute JobScheduler watchdog, and a
+  one-tap battery-optimization exemption.
 - **Zero third-party dependencies.** Plain Java 17, framework widgets, no AppCompat, no Compose, no Material — the
   debug APK is under 100 KB.
 
@@ -127,6 +132,24 @@ Every 10 seconds the foreground service:
 Because step 3 runs on every tick and is idempotent, a driver reset is repaired within one interval. That is the whole
 trick: **one `su` per tick, always re-asserting the desired state.**
 
+### History
+
+Samples go into a local SQLite database (`charge_history.db`) every five minutes, or sooner when the level changes
+(at most one row per 30 seconds); stop/resume transitions are stored in a separate events table. Both are kept for
+30 days and rendered by the 24h/7d chart with event markers and min/avg/max statistics. Simulated levels are never
+written to history.
+
+### Keeping the service alive
+
+Three layers, in order of reliability:
+
+1. the foreground service returns `START_STICKY` and is restarted by the system after a kill;
+2. a `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` receiver restarts it after a reboot or an update;
+3. a persisted 15-minute `JobScheduler` job pulls it back if the process disappeared, and is re-armed when the task
+   is removed from recents.
+
+Exempting the app from battery optimization (button in the app) makes the first layer much more likely to succeed.
+
 ### Checking that it really stops
 
 Look at the battery voltage, not at the node:
@@ -174,15 +197,23 @@ ChargeSentinel/
 │       │   │   ├── data/          # persistence
 │       │   │   │   ├── Settings.java
 │       │   │   │   └── EventLog.java
-│       │   │   ├── service/       # foreground service + boot receiver
+│       │   │   ├── history/       # SQLite samples + events
+│       │   │   │   ├── HistoryStore.java
+│       │   │   │   ├── HistoryPoint.java
+│       │   │   │   ├── HistoryEvent.java
+│       │   │   │   └── SampleGate.java
+│       │   │   ├── service/       # foreground service, boot receiver, watchdog
 │       │   │   │   ├── ChargeService.java
-│       │   │   │   └── BootReceiver.java
-│       │   │   └── ui/            # activity, gauge, view helpers
+│       │   │   │   ├── BootReceiver.java
+│       │   │   │   └── KeepAliveJobService.java
+│       │   │   └── ui/            # activity, gauge, chart, view helpers
 │       │   │       ├── MainActivity.java
 │       │   │       ├── BatteryGaugeView.java
+│       │   │       ├── BatteryChartView.java
 │       │   │       └── UiKit.java
 │       │   └── res/               # strings (en / zh-CN), theme, icons
 │       └── test/java/.../core/ChargePolicyTest.java
+│                          .../history/SampleGateTest.java
 ├── docs/                          # animated SVG banner + screenshot used by this README
 ├── gradle/libs.versions.toml
 ├── LICENSE

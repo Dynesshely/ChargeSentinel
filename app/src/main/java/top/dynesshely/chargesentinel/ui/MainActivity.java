@@ -6,10 +6,12 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -28,16 +30,24 @@ import top.dynesshely.chargesentinel.core.ChargeState;
 import top.dynesshely.chargesentinel.core.SysfsChargeControl;
 import top.dynesshely.chargesentinel.data.EventLog;
 import top.dynesshely.chargesentinel.data.Settings;
+import top.dynesshely.chargesentinel.history.HistoryEvent;
+import top.dynesshely.chargesentinel.history.HistoryPoint;
+import top.dynesshely.chargesentinel.history.HistoryStore;
 import top.dynesshely.chargesentinel.service.ChargeService;
+import top.dynesshely.chargesentinel.service.KeepAliveJobService;
 
-/** 唯一界面：弧形电量表 + 阈值 + 调试模拟 + 事件日志。 */
+/** 唯一界面：电量表、阈值、历史曲线、后台状态、调试与日志。 */
 public class MainActivity extends Activity {
 
     private static final int LOG_LINES = 8;
+    private static final long RANGE_24H = 24L * 60 * 60 * 1000;
+    private static final long RANGE_7D = 7L * 24 * 60 * 60 * 1000;
+    private static final long HISTORY_REFRESH_MS = 30_000L;
 
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
 
     private BatteryGaugeView gauge;
+    private BatteryChartView chart;
     private TextView rootChip;
     private TextView statusTitle;
     private TextView statusSub;
@@ -51,8 +61,14 @@ public class MainActivity extends Activity {
     private TextView simulationValue;
     private View simulationBlock;
     private TextView logView;
+    private TextView historyStats;
+    private TextView range24;
+    private TextView range7;
+    private TextView backgroundStatus;
 
     private boolean binding;
+    private long historyRange = RANGE_24H;
+    private long lastHistoryRefresh = 0;
 
     private final Runnable ticker = new Runnable() {
         @Override
@@ -84,6 +100,8 @@ public class MainActivity extends Activity {
         super.onResume();
         ChargeService.addListener(serviceListener);
         refresh();
+        refreshHistory(true);
+        refreshBackground();
         uiHandler.removeCallbacks(ticker);
         uiHandler.post(ticker);
     }
@@ -112,6 +130,8 @@ public class MainActivity extends Activity {
         root.addView(buildGauge(), lp(250, 6));
         root.addView(buildStatus());
         root.addView(buildLimitCard(), lp(-1, 16));
+        root.addView(buildHistoryCard(), lp(-1, 12));
+        root.addView(buildBackgroundCard(), lp(-1, 12));
         root.addView(buildDebugCard(), lp(-1, 12));
         root.addView(buildLogCard(), lp(-1, 12));
         root.addView(buildFooter(), lp(-1, 18));
@@ -153,7 +173,6 @@ public class MainActivity extends Activity {
 
     private View buildLimitCard() {
         LinearLayout card = UiKit.card(this);
-        card.setLayoutParams(lp(-1, 0));
 
         LinearLayout titleRow = UiKit.row(this);
         titleRow.addView(UiKit.text(this, getString(R.string.limit_title), 16, UiKit.COLOR_TEXT, true),
@@ -185,6 +204,54 @@ public class MainActivity extends Activity {
         resumeBar = makeSeekBar(UiKit.COLOR_ACCENT);
         resumeBar.setMax(ChargePolicy.RESUME_MAX - ChargePolicy.RESUME_MIN);
         card.addView(resumeBar, lp(-1, 2));
+        return card;
+    }
+
+    private View buildHistoryCard() {
+        LinearLayout card = UiKit.card(this);
+
+        LinearLayout titleRow = UiKit.row(this);
+        titleRow.addView(UiKit.text(this, getString(R.string.history_title), 16, UiKit.COLOR_TEXT, true),
+                UiKit.weighted());
+
+        range24 = makeRangeChip(getString(R.string.history_range_24h));
+        range7 = makeRangeChip(getString(R.string.history_range_7d));
+        LinearLayout.LayoutParams chipParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        chipParams.leftMargin = dp(6);
+        titleRow.addView(range24, chipParams);
+        titleRow.addView(range7, chipParams);
+        card.addView(titleRow);
+
+        range24.setOnClickListener(v -> selectRange(RANGE_24H));
+        range7.setOnClickListener(v -> selectRange(RANGE_7D));
+        updateRangeChips();
+
+        chart = new BatteryChartView(this);
+        card.addView(chart, lp(170, 12));
+
+        historyStats = UiKit.text(this, "", 11, UiKit.COLOR_MUTED, false);
+        card.addView(historyStats, lp(-1, 8));
+        return card;
+    }
+
+    private View buildBackgroundCard() {
+        LinearLayout card = UiKit.card(this);
+        card.addView(UiKit.text(this, getString(R.string.background_title), 16, UiKit.COLOR_TEXT, true));
+
+        backgroundStatus = UiKit.text(this, "", 13, UiKit.COLOR_MUTED, false);
+        card.addView(backgroundStatus, lp(-1, 10));
+
+        TextView action = UiKit.text(this, getString(R.string.background_action), 13, UiKit.COLOR_ACCENT, true);
+        action.setPadding(dp(14), dp(8), dp(14), dp(8));
+        action.setBackground(UiKit.chip(this, UiKit.COLOR_ACCENT));
+        action.setOnClickListener(v -> requestIgnoreBatteryOptimizations());
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionParams.topMargin = dp(10);
+        card.addView(action, actionParams);
+
+        card.addView(UiKit.hint(this, getString(R.string.background_hint)), lp(-1, 10));
         return card;
     }
 
@@ -249,6 +316,29 @@ public class MainActivity extends Activity {
         return UiKit.seekBar(this, color);
     }
 
+    private TextView makeRangeChip(String label) {
+        TextView chip = UiKit.text(this, label, 11, UiKit.COLOR_MUTED, true);
+        chip.setPadding(dp(10), dp(5), dp(10), dp(5));
+        return chip;
+    }
+
+    private void updateRangeChips() {
+        boolean day = historyRange == RANGE_24H;
+        range24.setTextColor(day ? UiKit.COLOR_ACCENT : UiKit.COLOR_MUTED);
+        range24.setBackground(UiKit.chip(this, day ? UiKit.COLOR_ACCENT : UiKit.COLOR_MUTED));
+        range7.setTextColor(day ? UiKit.COLOR_MUTED : UiKit.COLOR_ACCENT);
+        range7.setBackground(UiKit.chip(this, day ? UiKit.COLOR_MUTED : UiKit.COLOR_ACCENT));
+    }
+
+    private void selectRange(long range) {
+        if (historyRange == range) {
+            return;
+        }
+        historyRange = range;
+        updateRangeChips();
+        refreshHistory(true);
+    }
+
     private int dp(float value) {
         return UiKit.dp(this, value);
     }
@@ -276,9 +366,11 @@ public class MainActivity extends Activity {
             }
             Settings.setEnabled(this, checked);
             if (checked) {
+                KeepAliveJobService.schedule(this);
                 ensureService();
                 ChargeService.requestTick(this);
             } else {
+                KeepAliveJobService.cancel(this);
                 stopService(new Intent(this, ChargeService.class));
             }
             refresh();
@@ -390,6 +482,79 @@ public class MainActivity extends Activity {
                 }
             }
             logView.setText(builder.toString());
+        }
+
+        refreshHistory(false);
+        refreshBackground();
+    }
+
+    private void refreshHistory(boolean force) {
+        if (chart == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (!force && now - lastHistoryRefresh < HISTORY_REFRESH_MS) {
+            return;
+        }
+        lastHistoryRefresh = now;
+
+        long start = now - historyRange;
+        HistoryStore store = HistoryStore.get(this);
+        List<HistoryPoint> points = store.samplesSince(start);
+        List<HistoryEvent> events = store.eventsSince(start);
+
+        chart.setData(points, events, Settings.stop(this), Settings.resume(this), start, now);
+
+        if (points.isEmpty()) {
+            historyStats.setText(R.string.history_empty);
+            return;
+        }
+        int min = 100;
+        int max = 0;
+        long sum = 0;
+        for (HistoryPoint point : points) {
+            min = Math.min(min, point.level);
+            max = Math.max(max, point.level);
+            sum += point.level;
+        }
+        int average = Math.round((float) sum / points.size());
+        int suspends = 0;
+        for (HistoryEvent event : events) {
+            if (event.isSuspend()) {
+                suspends++;
+            }
+        }
+        int resumes = events.size() - suspends;
+        historyStats.setText(getString(R.string.history_stats, max, min, average, suspends, resumes));
+    }
+
+    private void refreshBackground() {
+        if (backgroundStatus == null) {
+            return;
+        }
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        boolean exempt = powerManager != null
+                && powerManager.isIgnoringBatteryOptimizations(getPackageName());
+        backgroundStatus.setText(exempt ? R.string.background_exempt : R.string.background_restricted);
+        backgroundStatus.setTextColor(exempt ? UiKit.COLOR_ACCENT : UiKit.COLOR_AMBER);
+    }
+
+    private void requestIgnoreBatteryOptimizations() {
+        PowerManager powerManager = getSystemService(PowerManager.class);
+        if (powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+            refreshBackground();
+            return;
+        }
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (Exception ignored) {
+                EventLog.add(getString(R.string.log_service_start_failed, String.valueOf(e.getMessage())));
+            }
         }
     }
 

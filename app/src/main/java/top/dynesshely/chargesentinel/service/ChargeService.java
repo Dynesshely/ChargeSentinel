@@ -27,6 +27,9 @@ import top.dynesshely.chargesentinel.core.ChargeState;
 import top.dynesshely.chargesentinel.core.SysfsChargeControl;
 import top.dynesshely.chargesentinel.data.EventLog;
 import top.dynesshely.chargesentinel.data.Settings;
+import top.dynesshely.chargesentinel.history.HistoryEvent;
+import top.dynesshely.chargesentinel.history.HistoryStore;
+import top.dynesshely.chargesentinel.history.SampleGate;
 import top.dynesshely.chargesentinel.ui.MainActivity;
 
 /**
@@ -43,6 +46,7 @@ public class ChargeService extends Service {
     private static final String CHANNEL_ID = "charge_limit";
     private static final int NOTIFICATION_ID = 1001;
     private static final long INTERVAL_MS = 10_000L;
+    private static final long PRUNE_INTERVAL_MS = 6L * 60 * 60 * 1000;
 
     private static final List<Runnable> LISTENERS = new CopyOnWriteArrayList<>();
 
@@ -54,6 +58,10 @@ public class ChargeService extends Service {
     private ScheduledExecutorService scheduler;
     private NotificationManager notificationManager;
     private String lastError = "";
+
+    private long lastSampleAt = 0;
+    private int lastSampleLevel = -1;
+    private long lastPruneAt = 0;
 
     public static void addListener(Runnable listener) {
         LISTENERS.add(listener);
@@ -79,6 +87,9 @@ public class ChargeService extends Service {
         scheduler = Executors.newSingleThreadScheduledExecutor();
         running = true;
         startInForeground(buildNotification(BatteryInfo.level(this), BatteryInfo.plugged(this)));
+        KeepAliveJobService.schedule(this);
+        HistoryStore.get(this).pruneOldData();
+        lastPruneAt = System.currentTimeMillis();
         scheduler.scheduleWithFixedDelay(this::safeTick, 0, INTERVAL_MS, TimeUnit.MILLISECONDS);
     }
 
@@ -113,6 +124,15 @@ public class ChargeService extends Service {
             restoreCharging();
         }
         super.onDestroy();
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        if (Settings.enabled(this)) {
+            // 用户从最近任务划掉应用时，让 15 分钟的兜底任务尽快把服务拉回来。
+            KeepAliveJobService.schedule(this);
+        }
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
@@ -162,6 +182,7 @@ public class ChargeService extends Service {
         int stopAt = Settings.stop(this);
         int resumeAt = Settings.resume(this);
         boolean wasSuspended = Settings.suspended(this);
+        boolean plugged = BatteryInfo.plugged(this);
 
         ChargePolicy.Decision decision = ChargePolicy.decide(level, stopAt, resumeAt, wasSuspended);
         boolean wantSuspended = ChargePolicy.wantSuspended(decision, wasSuspended);
@@ -178,11 +199,33 @@ public class ChargeService extends Service {
                 EventLog.add(wantSuspended
                         ? getString(R.string.log_suspended, level, stopAt)
                         : getString(R.string.log_resumed, level, resumeAt));
+                if (!Settings.simulationEnabled(this)) {
+                    HistoryStore.get(this).recordEvent(System.currentTimeMillis(),
+                            wantSuspended ? HistoryEvent.TYPE_SUSPEND : HistoryEvent.TYPE_RESUME, level);
+                }
             }
         }
 
-        updateNotification(level, BatteryInfo.plugged(this));
+        recordSample(level, plugged, wantSuspended);
+        updateNotification(level, plugged);
         notifyListeners();
+    }
+
+    /** 每 5 分钟或电量发生变化（且距上次至少 30 秒）时落一条采样，模拟电量不入库。 */
+    private void recordSample(int level, boolean plugged, boolean suspended) {
+        if (Settings.simulationEnabled(this)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (SampleGate.shouldRecord(now, lastSampleAt, level, lastSampleLevel)) {
+            HistoryStore.get(this).recordSample(now, level, plugged, suspended);
+            lastSampleAt = now;
+            lastSampleLevel = level;
+        }
+        if (now - lastPruneAt >= PRUNE_INTERVAL_MS) {
+            lastPruneAt = now;
+            HistoryStore.get(this).pruneOldData();
+        }
     }
 
     private void notifyListeners() {
@@ -229,6 +272,9 @@ public class ChargeService extends Service {
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE);
+        if (Build.VERSION.SDK_INT >= 31) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        }
         if (suspended) {
             builder.addAction(new Notification.Action.Builder(
                     null, getString(R.string.notification_action_disable), disablePending).build());

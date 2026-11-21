@@ -41,6 +41,20 @@
     <string name="root_granted">ROOT granted</string>
     <string name="root_missing">No root</string>
 
+    <!-- History -->
+    <string name="history_title">Battery history</string>
+    <string name="history_range_24h">24h</string>
+    <string name="history_range_7d">7d</string>
+    <string name="history_empty">No samples yet</string>
+    <string name="history_stats">Max %1$d%% · Min %2$d%% · Avg %3$d%% · %4$d stops · %5$d resumes</string>
+
+    <!-- Background -->
+    <string name="background_title">Background reliability</string>
+    <string name="background_hint">The service is sticky, restarts after boot, and a 15-minute JobScheduler watchdog pulls it back if the system kills it. Exempting the app from battery optimization makes that much more reliable.</string>
+    <string name="background_exempt">Battery optimization: exempt</string>
+    <string name="background_restricted">Battery optimization: not exempt</string>
+    <string name="background_action">Allow background</string>
+
     <!-- Event log messages -->
     <string name="log_root_ok">Root access granted</string>
     <string name="log_root_failed">Root check failed (%1$s)</string>
