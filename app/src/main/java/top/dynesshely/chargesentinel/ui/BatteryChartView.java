@@ -121,15 +121,16 @@ public class BatteryChartView extends View {
         plot.set(left, top, right, bottom);
 
         drawGrid(canvas);
-        drawThresholds(canvas);
 
         if (points.size() < 2) {
+            emptyPaint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText(getContext().getString(R.string.history_empty),
                     plot.centerX(), plot.centerY(), emptyPaint);
             drawTimeLabels(canvas);
             return;
         }
 
+        drawThresholds(canvas);
         drawArea(canvas);
         drawCurve(canvas);
         drawEvents(canvas);

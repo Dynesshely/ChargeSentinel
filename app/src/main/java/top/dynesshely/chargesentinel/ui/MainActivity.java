@@ -506,7 +506,7 @@ public class MainActivity extends Activity {
         chart.setData(points, events, Settings.stop(this), Settings.resume(this), start, now);
 
         if (points.isEmpty()) {
-            historyStats.setText(R.string.history_empty);
+            historyStats.setText("");
             return;
         }
         int min = 100;
