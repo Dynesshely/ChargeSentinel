@@ -91,6 +91,9 @@ public class MainActivity extends Activity {
         checkRoot();
         if (Settings.enabled(this)) {
             ensureService();
+        } else {
+            // 卸载重装或用户关闭限制后，内核里的停充状态可能残留，启动时兜底恢复一次。
+            allowChargingOnce();
         }
         refresh();
     }
@@ -587,6 +590,10 @@ public class MainActivity extends Activity {
                 refresh();
             });
         }).start();
+    }
+
+    private void allowChargingOnce() {
+        new Thread(() -> new SysfsChargeControl().apply(false)).start();
     }
 
     private void ensureService() {
