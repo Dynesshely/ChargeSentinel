@@ -6,6 +6,16 @@ android {
     namespace = "top.dynesshely.chargesentinel"
     compileSdk = 34
 
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file(System.getenv("DEBUG_KEYSTORE_PATH")
+                ?: System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "top.dynesshely.chargesentinel"
         minSdk = 30
