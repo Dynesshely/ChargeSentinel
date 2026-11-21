@@ -23,6 +23,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Restore debug keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p "$HOME/.android"
+            echo "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+            chmod 600 "$HOME/.android/debug.keystore"
+          fi
       - name: Install Android SDK packages
         run: |
           set -e
